@@ -7,12 +7,10 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
-
-RUN pip install --no-cache-dir --no-deps \
-    torchvision==0.23.0 \
-    --index-url https://download.pytorch.org/whl/cu128
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY handler.py .
+
+RUN python -c "import torch; print(torch.__version__); import torchvision; print(torchvision.__version__)"
 
 CMD ["python", "-u", "handler.py"]
