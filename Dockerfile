@@ -7,10 +7,9 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Replace the old pip install line with this:
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 COPY handler.py .
-
-RUN python -c "import torch; print(torch.__version__); import torchvision; print(torchvision.__version__)"
 
 CMD ["python", "-u", "handler.py"]
