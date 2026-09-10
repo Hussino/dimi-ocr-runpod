@@ -9,9 +9,8 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
-# Match the torch 2.8.0 + CUDA 12.8 stack already in the image.
 RUN pip install --no-cache-dir --no-deps \
-    torchvision==0.23.0+cu128 \
+    torchvision==0.23.0 \
     --index-url https://download.pytorch.org/whl/cu128
 
 COPY handler.py .
