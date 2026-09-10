@@ -11,7 +11,7 @@ from transformers import (
 )
 
 
-BASE_MODEL = "unsloth/Qwen2.5-VL-7B-Instruct-unsloth-bnb-4bit"
+BASE_MODEL = "unsloth/qwen2.5-vl-7b-instruct-bnb-4bit"
 ADAPTER_MODEL = "AhmedZaky1/DIMI-Arabic-OCR-V2"
 
 DEFAULT_PROMPT = (
