@@ -1,0 +1,7 @@
+runpod
+transformers>=4.51.0
+peft
+bitsandbytes
+pillow
+qwen-vl-utils
+huggingface_hub
