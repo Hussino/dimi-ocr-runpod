@@ -1,7 +1,8 @@
 runpod
 transformers>=4.51.0
-peft
+peft>=0.15.0
 bitsandbytes
+accelerate
 pillow
 qwen-vl-utils
 huggingface_hub

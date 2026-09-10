@@ -1,37 +1,42 @@
 import base64
 import io
-import os
 
 import runpod
 import torch
 from PIL import Image
 from peft import PeftModel
-from transformers import AutoProcessor, AutoModelForCausalLM
+from transformers import (
+    AutoProcessor,
+    AutoModelForCausalLM,
+)
 
 
-# ---------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------
-
-BASE_MODEL = "unsloth/qwen2.5-vl-7b-instruct-bnb-4bit"
+BASE_MODEL = "unsloth/Qwen2.5-VL-7B-Instruct-unsloth-bnb-4bit"
 ADAPTER_MODEL = "AhmedZaky1/DIMI-Arabic-OCR-V2"
+
+DEFAULT_PROMPT = (
+    "استخرج النص العربي والأرقام الموجودة في هذه الصورة بدقة عالية."
+)
 
 MAX_NEW_TOKENS = 2048
 
-print("Loading processor...")
+
+# ---------------------------------------------------------
+# Load models ONCE when the worker starts
+# ---------------------------------------------------------
+
+print(f"Loading base model: {BASE_MODEL}")
 
 processor = AutoProcessor.from_pretrained(
     BASE_MODEL,
 )
-
-print("Loading base model...")
 
 base_model = AutoModelForCausalLM.from_pretrained(
     BASE_MODEL,
     device_map="auto",
 )
 
-print("Loading DIMI LoRA adapter...")
+print(f"Loading LoRA adapter: {ADAPTER_MODEL}")
 
 model = PeftModel.from_pretrained(
     base_model,
@@ -40,7 +45,7 @@ model = PeftModel.from_pretrained(
 
 model.eval()
 
-print("DIMI Arabic OCR V2 loaded successfully.")
+print("DIMI Arabic OCR V2 is ready.")
 
 
 # ---------------------------------------------------------
@@ -56,7 +61,10 @@ def decode_image(image_b64: str) -> Image.Image:
         raise ValueError(f"Invalid base64 image: {exc}") from exc
 
 
-def run_ocr(image: Image.Image, prompt: str) -> str:
+def run_ocr(
+    image: Image.Image,
+    prompt: str,
+) -> str:
 
     messages = [
         {
@@ -74,18 +82,13 @@ def run_ocr(image: Image.Image, prompt: str) -> str:
         }
     ]
 
-    text = processor.apply_chat_template(
+    # Build Qwen vision-language input
+    inputs = processor.apply_chat_template(
         messages,
-        tokenize=False,
+        tokenize=True,
         add_generation_prompt=True,
-    )
-
-    inputs = processor(
-        text=[text],
-        images=[image],
-        padding=True,
+        return_dict=True,
         return_tensors="pt",
-        truncation=False,
     )
 
     # Move tensors to GPU
@@ -95,28 +98,25 @@ def run_ocr(image: Image.Image, prompt: str) -> str:
     }
 
     with torch.inference_mode():
-        generated_ids = model.generate(
+
+        outputs = model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
             do_sample=False,
         )
 
     # Remove prompt tokens
-    generated_ids_trimmed = [
-        output_ids[len(input_ids):]
-        for input_ids, output_ids in zip(
-            inputs["input_ids"],
-            generated_ids,
-        )
-    ]
+    input_length = inputs["input_ids"].shape[1]
 
-    output_text = processor.batch_decode(
-        generated_ids_trimmed,
+    generated_ids = outputs[:, input_length:]
+
+    result = processor.batch_decode(
+        generated_ids,
         skip_special_tokens=True,
         clean_up_tokenization_spaces=False,
     )[0]
 
-    return output_text.strip()
+    return result.strip()
 
 
 # ---------------------------------------------------------
@@ -125,35 +125,47 @@ def run_ocr(image: Image.Image, prompt: str) -> str:
 
 def handler(event):
 
-    job_input = event.get("input", {})
+    try:
 
-    image_b64 = job_input.get("image")
+        job_input = event.get("input", {})
 
-    if not image_b64:
-        raise ValueError(
-            "Missing input.image. Expected a base64-encoded image."
+        image_b64 = job_input.get("image")
+
+        if not image_b64:
+            return {
+                "success": False,
+                "error": "Missing input.image",
+            }
+
+        prompt = job_input.get(
+            "prompt",
+            DEFAULT_PROMPT,
         )
 
-    prompt = job_input.get(
-        "prompt",
-        # "استخرج النص العربي والأرقام الموجودة في هذه الصورة بدقة عالية."
-        "Extract the Arabic text in the image exactly as it appears, and don't translate it or guess anything"
-    )
+        image = decode_image(image_b64)
 
-    image = decode_image(image_b64)
+        text = run_ocr(
+            image=image,
+            prompt=prompt,
+        )
 
-    result = run_ocr(
-        image=image,
-        prompt=prompt,
-    )
+        return {
+            "success": True,
+            "text": text,
+        }
 
-    return {
-        "success": True,
-        "text": result,
-    }
+    except Exception as exc:
+
+        print(f"ERROR: {exc}")
+
+        return {
+            "success": False,
+            "error": str(exc),
+        }
 
 
 if __name__ == "__main__":
+
     runpod.serverless.start(
         {
             "handler": handler,
